@@ -1,0 +1,64 @@
+
+.clinerules/byterover-rules.md
+.kilocode/rules/byterover-rules.md
+.roo/rules/byterover-rules.md
+.windsurf/rules/byterover-rules.md
+.cursor/rules/byterover-rules.mdc
+.kiro/steering/byterover-rules.md
+.qoder/rules/byterover-rules.md
+.augment/rules/byterover-rules.md
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# Packaging / tooling
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+.tox/
+
+# Jupyter / notebooks
+.ipynb_checkpoints/
+
+# Logs
+*.log
+
+# --- OS / Editor ---
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# VS Code / JetBrains
+.vscode/
+.idea/
+*.iml
+
+# --- Secrets / Local config ---
+.env
+.env.*
+
+# Google API OAuth tokens / credentials (DO NOT COMMIT)
+token.json
+credentials.json
+credentials.*.json
+client_secret*.json
