@@ -39,8 +39,11 @@ def main():
         else:
             print("Failed to log to Sheet. Check config/connection.")
 
+    def on_upload(file_path: str) -> str:
+        return sheet_manager.upload_file_to_drive(file_path)
+
     # Initialize UI
-    window = InputWindow(submit_callback=on_submit)
+    window = InputWindow(submit_callback=on_submit, upload_callback=on_upload)
 
     def toggle_window():
         window.thread_safe_toggle()

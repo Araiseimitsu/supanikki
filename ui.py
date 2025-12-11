@@ -1,15 +1,20 @@
 import customtkinter as ctk
 import threading
+from tkinterdnd2 import TkinterDnD, DND_FILES
 
 class InputWindow:
-    def __init__(self, submit_callback):
+    def __init__(self, submit_callback, upload_callback=None):
         self.submit_callback = submit_callback
+        self.upload_callback = upload_callback
         
         ctk.set_appearance_mode("System")
         ctk.set_default_color_theme("blue")
         
-        # Set fg_color to a specific color for transparency key
-        self.root = ctk.CTk(fg_color='#000001')
+        # Drag & Drop を有効にするため TkinterDnD の root を使う
+        # 透明化のキー色（Windowsの transparentcolor 用）
+        self._transparent_key = '#000001'
+        self.root = TkinterDnD.Tk()
+        self.root.configure(bg=self._transparent_key)
         self.root.title("Supanikki")
         
         # Remove title bar for a cleaner look
@@ -18,7 +23,7 @@ class InputWindow:
         # Make window data slightly transparent
         self.root.attributes("-alpha", 0.9)
         # Make the background color fully transparent (for rounded corners)
-        self.root.attributes("-transparentcolor", '#000001')
+        self.root.attributes("-transparentcolor", self._transparent_key)
         
         # Dimensions
         self.width = 700
@@ -51,6 +56,16 @@ class InputWindow:
             wrap="word"
         )
         self.entry.grid(row=0, column=0, padx=20, pady=10, sticky="ew")
+
+        # Drag & Drop（ファイル）
+        # CTkTextbox は内部に tk.Text を持つので、そちらにDnDを登録する
+        drop_target = getattr(self.entry, "_textbox", self.entry)
+        try:
+            drop_target.drop_target_register(DND_FILES)
+            drop_target.dnd_bind("<<Drop>>", self.on_drop_files)
+        except Exception:
+            # DnD初期化に失敗しても入力自体は使えるようにする
+            pass
         
         self.entry.bind("<Return>", self.on_enter)
         self.entry.bind("<Escape>", self.on_escape)
@@ -82,6 +97,34 @@ class InputWindow:
     def on_escape(self, event):
         self.entry.delete("0.0", "end")
         self.hide()
+
+    def on_drop_files(self, event):
+        # upload_callback が無ければ何もしない
+        if not self.upload_callback:
+            return "break"
+
+        # event.data は複数パスが来ることがある（スペースを含む場合は{}で囲われる）
+        paths = self.root.tk.splitlist(event.data)
+
+        def worker():
+            urls = []
+            for path in paths:
+                try:
+                    url = self.upload_callback(path)
+                    urls.append(url)
+                except Exception as e:
+                    urls.append(f"[upload failed] {path} ({e})")
+
+            def insert_urls():
+                # 複数ファイルは改行で追記
+                block = "\n".join(urls) + "\n"
+                self.entry.insert("end", block)
+                self.entry.see("end")
+
+            self.root.after(0, insert_urls)
+
+        threading.Thread(target=worker, daemon=True).start()
+        return "break"
 
     def show(self):
         if not self.is_visible:

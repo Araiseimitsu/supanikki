@@ -5,3 +5,5 @@ google-auth-oauthlib
 google-auth-httplib2
 keyboard
 pillow
+google-api-python-client
+tkinterdnd2
