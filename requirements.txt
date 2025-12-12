@@ -7,3 +7,5 @@ keyboard
 pillow
 google-api-python-client
 tkinterdnd2
+pynput
+pystray

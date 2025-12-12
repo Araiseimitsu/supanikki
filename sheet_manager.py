@@ -1,20 +1,24 @@
 import os.path
+import traceback
+from datetime import datetime
+from urllib.parse import urlparse
+
 import gspread
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
-import config
-from datetime import datetime
-import traceback
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
-from urllib.parse import urlparse
+
+import config
 
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
-    # 作成/アップロードしたファイルに限定してDriveへアクセス（共有権限は変更しない＝自分のみ閲覧）
-    "https://www.googleapis.com/auth/drive.file",
+    # 既存フォルダ配下へのアップロードやフォルダ存在確認のため Drive 全体へアクセス
+    # （共有権限は本アプリ側では変更しない＝自分のみ閲覧のまま）
+    "https://www.googleapis.com/auth/drive",
 ]
+
 
 def _normalize_drive_folder_id(value: str) -> str:
     """
@@ -41,6 +45,7 @@ def _normalize_drive_folder_id(value: str) -> str:
         v = v.split("?", 1)[0]
     return v
 
+
 class SheetManager:
     def __init__(self):
         self.creds = None
@@ -56,10 +61,16 @@ class SheetManager:
                 # まずは token.json に入っているスコープのまま読み込む（ここでSCOPESを渡すと、
                 # refresh時に「持っていないスコープ」で更新を試みて invalid_scope になり得る）
                 self.creds = Credentials.from_authorized_user_file(config.TOKEN_FILE)
-            
+
             # スコープが不足している場合（Drive追加など）は再認証が必要
-            if self.creds and hasattr(self.creds, "has_scopes") and not self.creds.has_scopes(SCOPES):
-                print("Existing token.json does not have required scopes. Re-authentication is required.")
+            if (
+                self.creds
+                and hasattr(self.creds, "has_scopes")
+                and not self.creds.has_scopes(SCOPES)
+            ):
+                print(
+                    "Existing token.json does not have required scopes. Re-authentication is required."
+                )
                 self.creds = None
 
             if not self.creds or not self.creds.valid:
@@ -67,20 +78,24 @@ class SheetManager:
                     self.creds.refresh(Request())
                 else:
                     if not os.path.exists(config.CREDENTIALS_FILE):
-                        print(f"Credentials file '{config.CREDENTIALS_FILE}' not found.")
+                        print(
+                            f"Credentials file '{config.CREDENTIALS_FILE}' not found."
+                        )
                         return False
-                    
+
                     flow = InstalledAppFlow.from_client_secrets_file(
                         config.CREDENTIALS_FILE, SCOPES
                     )
                     self.creds = flow.run_local_server(port=0)
-                
+
                 with open(config.TOKEN_FILE, "w") as token:
                     token.write(self.creds.to_json())
 
             self.client = gspread.authorize(self.creds)
             # Drive API（v3）
-            self.drive = build("drive", "v3", credentials=self.creds, cache_discovery=False)
+            self.drive = build(
+                "drive", "v3", credentials=self.creds, cache_discovery=False
+            )
             self.is_authenticated = True
             return True
         except Exception as e:
@@ -93,9 +108,9 @@ class SheetManager:
             if not self.authenticate():
                 return False
 
-        if config.SPREADSHEET_ID == 'YOUR_SPREADSHEET_ID_HERE':
-             print("Spreadsheet ID not configured.")
-             return False
+        if config.SPREADSHEET_ID == "YOUR_SPREADSHEET_ID_HERE":
+            print("Spreadsheet ID not configured.")
+            return False
 
         try:
             self.sheet = self.client.open_by_key(config.SPREADSHEET_ID).sheet1
@@ -107,9 +122,9 @@ class SheetManager:
 
     def append_log(self, text):
         if not self.sheet:
-             if not self.connect_sheet():
-                 return False
-        
+            if not self.connect_sheet():
+                return False
+
         now = datetime.now()
         timestamp = now.strftime("%Y-%m-%d %H:%M:%S")
         try:
@@ -148,12 +163,18 @@ class SheetManager:
         folder_id_raw = getattr(config, "DRIVE_FOLDER_ID", "") or ""
         folder_id = _normalize_drive_folder_id(folder_id_raw)
         if folder_id:
-            # フォルダが存在し、アクセス可能かを事前にチェック（URLを誤って貼った場合の原因特定にもなる）
-            self.drive.files().get(
-                fileId=folder_id,
-                fields="id",
-                supportsAllDrives=True,
-            ).execute()
+            # フォルダが存在し、アクセス可能かを事前にチェック（URL/IDの貼り間違いの原因特定用）
+            try:
+                self.drive.files().get(
+                    fileId=folder_id,
+                    fields="id",
+                    supportsAllDrives=True,
+                ).execute()
+            except Exception as e:
+                raise RuntimeError(
+                    "DRIVE_FOLDER_ID のフォルダが見つからないか、アクセス権がありません。"
+                    " Driveの共有設定/権限、またはフォルダURL/IDを確認してください。"
+                ) from e
             metadata["parents"] = [folder_id]
 
         media = MediaFileUpload(file_path, resumable=True)
@@ -169,7 +190,11 @@ class SheetManager:
         )
 
         file_id = created.get("id")
-        return created.get("webViewLink") or f"https://drive.google.com/file/d/{file_id}/view"
+        return (
+            created.get("webViewLink")
+            or f"https://drive.google.com/file/d/{file_id}/view"
+        )
+
 
 if __name__ == "__main__":
     # simple test
