@@ -30,14 +30,14 @@ class InputWindow:
         self.root.attributes("-transparentcolor", self._transparent_key)
 
         # Dimensions
-        self.width = 700
-        self.height = 80
+        self.width = 680
+        self.height = 70  # Initial height
 
         # Center the window
         screen_width = self.root.winfo_screenwidth()
         screen_height = self.root.winfo_screenheight()
         x = (screen_width // 2) - (self.width // 2)
-        y = screen_height // 3  # Position at top 1/3
+        y = screen_height // 3
 
         self.root.geometry(f"{self.width}x{self.height}+{int(x)}+{int(y)}")
 
@@ -45,32 +45,48 @@ class InputWindow:
         self.root.grid_columnconfigure(0, weight=1)
         self.root.grid_rowconfigure(0, weight=1)
 
-        # Frame to add a border/background effect
-        self.frame = ctk.CTkFrame(self.root, corner_radius=20)
-        self.frame.grid(row=0, column=0, sticky="nsew", padx=2, pady=2)
-        self.frame.grid_columnconfigure(0, weight=1)
-        self.frame.grid_columnconfigure(1, weight=0)
-        self.frame.grid_rowconfigure(0, weight=1)
+        # "Capsule" Container
+        # Blue outline as requested
+        self.container = ctk.CTkFrame(
+            self.root,
+            corner_radius=32,
+            fg_color=("white", "#2B2B2B"),
+            border_width=2,
+            border_color=("#3B8ED0", "#1F6AA5"),  # Blue theme
+        )
+        self.container.grid(row=0, column=0, sticky="nsew", padx=0, pady=0)
+        self.container.grid_columnconfigure(0, weight=1)
+        self.container.grid_columnconfigure(1, weight=0)
+        self.container.grid_rowconfigure(0, weight=1)
 
+        # Input Field
         self.entry = ctk.CTkTextbox(
-            self.frame,
+            self.container,
             font=("Segoe UI", 18),
-            height=60,
+            height=40,
             border_width=0,
             fg_color="transparent",
             wrap="word",
+            # Remove internal padding/highlight to make it clean
+            activate_scrollbars=False
         )
-        self.entry.grid(row=0, column=0, padx=(20, 8), pady=10, sticky="ew")
+        self.entry.grid(row=0, column=0, padx=(20, 10), pady=(15, 15), sticky="nsew")
 
+        # Send Button (Round Icon)
         self.send_button = ctk.CTkButton(
-            self.frame,
-            text="送信",
-            width=80,
-            height=44,
-            corner_radius=14,
+            self.container,
+            text="↑",  # Minimalist arrow
+            font=("Arial", 20, "bold"),
+            width=40,
+            height=40,
+            corner_radius=20,
+            fg_color=("#007AFF", "#0A84FF"),  # System Blue-ish
+            hover_color=("#0051A8", "#0058A8"),
             command=self.on_send_click,
         )
-        self.send_button.grid(row=0, column=1, padx=(0, 16), pady=10, sticky="e")
+        # Position at bottom-right of the capsule, or centered vertically depends on preference.
+        # sticky="s" aligns it to bottom if multiline, but usually we want it bottom-aligned for chat style.
+        self.send_button.grid(row=0, column=1, padx=(0, 12), pady=(0, 12), sticky="s")
 
         # Drag & Drop（ファイル）
         # CTkTextbox は内部に tk.Text を持つので、そちらにDnDを登録する
@@ -86,7 +102,7 @@ class InputWindow:
         self.entry.bind("<Escape>", self.on_escape)
 
         # Dynamic resize settings
-        self._min_height = 60
+        self._min_height = 40
         self._max_height = 260
         self._line_height_px = 24
         self._resize_after_id = None
@@ -156,7 +172,8 @@ class InputWindow:
 
         if int(self.entry.cget("height")) != int(target_height):
             self.entry.configure(height=target_height)
-            new_window_height = int(target_height) + 20
+            # Add padding (15 top + 15 bottom = 30) for window height
+            new_window_height = int(target_height) + 30
             new_window_height = max(self.height, min(320, new_window_height))
             self.root.geometry(
                 f"{self.width}x{new_window_height}+{self.root.winfo_x()}+{self.root.winfo_y()}"
