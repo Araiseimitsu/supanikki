@@ -16,7 +16,7 @@ from ui import InputWindow
 
 # Ensure we can find local modules
 
-SETTINGS_FILE = "settings.json"
+SETTINGS_FILE = os.path.join(config.BASE_DIR, "settings.json")
 
 
 def load_settings():
@@ -265,7 +265,12 @@ def main():
     def on_restart(icon, item):
         # 新しいプロセスを立ち上げてから終了
         try:
-            subprocess.Popen([sys.executable] + sys.argv)
+            if getattr(sys, 'frozen', False):
+                # If we are an exe, just relaunch the exe
+                subprocess.Popen([sys.executable])
+            else:
+                # If script, run with python interpreter
+                subprocess.Popen([sys.executable] + sys.argv)
         except Exception as e:
             print(f"Failed to restart: {e}")
             return

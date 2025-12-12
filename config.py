@@ -1,6 +1,17 @@
+import os
+import sys
+
+# Determine if we are running in a frozen bundle (PyInstaller) or standard script
+if getattr(sys, "frozen", False):
+    # If frozen, the executable dir is here
+    BASE_DIR = os.path.dirname(sys.executable)
+else:
+    # If script, the script dir is here
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
 SPREADSHEET_ID = "1k4FX3oR-ICAgHoFvkd0ZG-nYzY0p3zCahbUcG6BHVts"
-CREDENTIALS_FILE = "credentials.json"
-TOKEN_FILE = "token.json"
+CREDENTIALS_FILE = os.path.join(BASE_DIR, "credentials.json")
+TOKEN_FILE = os.path.join(BASE_DIR, "token.json")
 HOTKEY = "ctrl+shift+space"
 
 # Google Drive: アップロード先フォルダ（空文字ならマイドライブ直下）
