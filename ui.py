@@ -31,7 +31,7 @@ class InputWindow:
 
         # Dimensions
         self.width = 680
-        self.height = 70  # Initial height
+        self.height = 90  # Increased height to prevent clipping
 
         # Center the window
         screen_width = self.root.winfo_screenwidth()
@@ -46,13 +46,14 @@ class InputWindow:
         self.root.grid_rowconfigure(0, weight=1)
 
         # "Capsule" Container
-        # Blue outline as requested
+        # More premium look: Pure white (or very light gray) for light mode, Dark gray for dark mode.
+        # High corner radius for pill shape.
         self.container = ctk.CTkFrame(
             self.root,
-            corner_radius=32,
-            fg_color=("white", "#2B2B2B"),
-            border_width=2,
-            border_color=("#3B8ED0", "#1F6AA5"),  # Blue theme
+            corner_radius=40,  # Slightly more rounded for larger height
+            fg_color=("white", "#1c1c1e"),  # Apple-like dark mode gray
+            border_width=1,
+            border_color=("#e5e5e5", "#333333"),  # Subtle border
         )
         self.container.grid(row=0, column=0, sticky="nsew", padx=0, pady=0)
         self.container.grid_columnconfigure(0, weight=1)
@@ -60,33 +61,32 @@ class InputWindow:
         self.container.grid_rowconfigure(0, weight=1)
 
         # Input Field
+        # Premium font: Yu Gothic UI Semibold for better visibility + Meiryo UI fallback
         self.entry = ctk.CTkTextbox(
             self.container,
-            font=("Segoe UI", 18),
-            height=40,
+            font=("Yu Gothic UI Semibold", 20),
+            height=50,  # Increased min height
             border_width=0,
             fg_color="transparent",
+            text_color=("black", "white"),
             wrap="word",
-            # Remove internal padding/highlight to make it clean
             activate_scrollbars=False
         )
-        self.entry.grid(row=0, column=0, padx=(20, 10), pady=(15, 15), sticky="nsew")
+        self.entry.grid(row=0, column=0, padx=(25, 10), pady=(20, 20), sticky="nsew")
 
         # Send Button (Round Icon)
         self.send_button = ctk.CTkButton(
             self.container,
-            text="↑",  # Minimalist arrow
-            font=("Arial", 20, "bold"),
-            width=40,
-            height=40,
-            corner_radius=20,
-            fg_color=("#007AFF", "#0A84FF"),  # System Blue-ish
-            hover_color=("#0051A8", "#0058A8"),
+            text="↑",
+            font=("Arial", 24, "bold"),
+            width=48,
+            height=48,
+            corner_radius=24,
+            fg_color=("#007AFF", "#0A84FF"),  # iOS Blue
+            hover_color=("#0062CC", "#0070D9"),
             command=self.on_send_click,
         )
-        # Position at bottom-right of the capsule, or centered vertically depends on preference.
-        # sticky="s" aligns it to bottom if multiline, but usually we want it bottom-aligned for chat style.
-        self.send_button.grid(row=0, column=1, padx=(0, 12), pady=(0, 12), sticky="s")
+        self.send_button.grid(row=0, column=1, padx=(0, 20), pady=(0, 20), sticky="s")
 
         # Drag & Drop（ファイル）
         # CTkTextbox は内部に tk.Text を持つので、そちらにDnDを登録する
@@ -102,9 +102,9 @@ class InputWindow:
         self.entry.bind("<Escape>", self.on_escape)
 
         # Dynamic resize settings
-        self._min_height = 40
-        self._max_height = 260
-        self._line_height_px = 24
+        self._min_height = 50  # Match new widget height
+        self._max_height = 280
+        self._line_height_px = 30  # Adjusted for larger font
         self._resize_after_id = None
         try:
             drop_target.bind("<<Modified>>", self.on_text_modified)
@@ -119,10 +119,7 @@ class InputWindow:
         self.is_visible = False
 
     def on_enter(self, event):
-        # Check if Shift is pressed (state & 0x1 or similar depending on OS, but simpler to check keysym if bound generally?)
-        # For Tkinter events, event.state & 0x1 is usually Shift.
-        # But 'Shift-Return' binding is better if we want to be explicit, but Return binds both.
-
+        # Check if Shift is pressed
         if event.state & 0x0001:  # Shift key is held
             return  # Allow default newline behavior
 
@@ -172,8 +169,8 @@ class InputWindow:
 
         if int(self.entry.cget("height")) != int(target_height):
             self.entry.configure(height=target_height)
-            # Add padding (15 top + 15 bottom = 30) for window height
-            new_window_height = int(target_height) + 30
+            # Add padding for window height (20 + 20 = 40)
+            new_window_height = int(target_height) + 40 
             new_window_height = max(self.height, min(320, new_window_height))
             self.root.geometry(
                 f"{self.width}x{new_window_height}+{self.root.winfo_x()}+{self.root.winfo_y()}"
@@ -235,7 +232,7 @@ class InputWindow:
 
     def show(self):
         if not self.is_visible:
-            # 表示前に必ず内容をクリアして、前回のメッセージが一瞬見えるのを防ぐ
+            # Clear previous content to prevent flash
             try:
                 self.entry.delete("0.0", "end")
                 self.entry.configure(height=self._min_height)
@@ -245,36 +242,45 @@ class InputWindow:
             except Exception:
                 pass
 
-            # OSの描画キャッシュで前回内容がフラッシュするのを避けるため、一旦透明で表示
+            # Make transparent for initial render to avoid flash
             try:
                 self.root.attributes("-alpha", 0.0)
             except Exception:
                 pass
+            
             self.root.deiconify()
+            
+            # AGGRESSIVE FOCUS LOGIC
             self.root.attributes("-topmost", True)
-            self.root.lift()  # Ensure it's on top
+            self.root.lift()
+            
+            try:
+                # Force focus to the main window first
+                self.root.focus_force()
+                # Then to the entry
+                self.entry.focus_force()
+            except Exception:
+                pass
 
-            # 軽量化: update_idletasksは最小限に
+            # Lightweight update
             try:
                 self.root.update_idletasks()
                 self.root.attributes("-alpha", self._alpha_visible)
             except Exception:
                 pass
 
-            # フォーカス処理を最適化
-            try:
-                self.root.focus_force()
-                self.entry.focus_force()
-            except Exception:
-                pass
-
-            # 遅延フォーカスは50msに短縮
+            # Multiple attempts to steal focus (robustness)
             self.root.after(50, self._delayed_focus)
+            self.root.after(150, self._delayed_focus)
+            
             self.is_visible = True
 
     def _delayed_focus(self):
-        """遅延フォーカス処理（軽量化）"""
+        """Force focus again slightly later to override other apps."""
         try:
+            self.root.lift()
+            self.root.attributes("-topmost", True)
+            self.root.focus_force()
             self.entry.focus_force()
         except Exception:
             pass
