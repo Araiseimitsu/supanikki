@@ -71,7 +71,9 @@ def build():
             f.write("1. 必要なファイル:\n")
             f.write("   - Supanikki.exe (実行ファイル)\n")
             f.write("   - credentials.json (Google API認証情報)\n")
-            f.write("   - settings.json (アプリケーション設定)\n\n")
+            f.write("   - settings.json (アプリケーション設定)\n")
+            f.write("   - (自動生成) local_history.json: 直近の履歴データ\n")
+            f.write("   - (自動生成) offline_queue.json: オフライン時の未送信データ\n\n")
             f.write("2. settings.jsonの設定項目:\n")
             f.write("   - spreadsheet_id: Google スプレッドシートID\n")
             f.write(
