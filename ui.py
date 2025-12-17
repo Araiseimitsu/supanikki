@@ -1,14 +1,17 @@
 import os
 import threading
 
+import tempfile
+from PIL import ImageGrab
 import customtkinter as ctk
 from tkinterdnd2 import DND_FILES, TkinterDnD
 
 
 class InputWindow:
-    def __init__(self, submit_callback, upload_callback=None):
+    def __init__(self, submit_callback, upload_callback=None, history_manager=None):
         self.submit_callback = submit_callback
         self.upload_callback = upload_callback
+        self.history_manager = history_manager
 
         ctk.set_appearance_mode("System")
         ctk.set_default_color_theme("blue")
@@ -58,7 +61,23 @@ class InputWindow:
         self.container.grid(row=0, column=0, sticky="nsew", padx=0, pady=0)
         self.container.grid_columnconfigure(0, weight=1)
         self.container.grid_columnconfigure(1, weight=0)
-        self.container.grid_rowconfigure(0, weight=1)
+        self.container.grid_rowconfigure(0, weight=0) # Input row
+        self.container.grid_rowconfigure(1, weight=1) # History row
+
+        # History Frame (Initially hidden)
+        self.history_frame = ctk.CTkFrame(self.container, fg_color="transparent")
+        self.history_frame.grid(row=1, column=0, columnspan=2, sticky="nsew", padx=20, pady=(0, 20))
+        self.history_frame.grid_remove() # Hide initially
+
+        self.history_label = ctk.CTkLabel(
+            self.history_frame, 
+            text="", 
+            font=("Yu Gothic UI", 12), 
+            text_color="gray", 
+            justify="left",
+            anchor="w"
+        )
+        self.history_label.pack(fill="x", expand=True)
 
         # Input Field
         # Premium font: Yu Gothic UI Semibold for better visibility + Meiryo UI fallback
@@ -100,6 +119,8 @@ class InputWindow:
 
         self.entry.bind("<Return>", self.on_enter)
         self.entry.bind("<Escape>", self.on_escape)
+        # Bind paste to handle images
+        self.entry.bind("<Control-v>", self.on_paste)
 
         # Dynamic resize settings
         self._min_height = 50  # Match new widget height
@@ -169,12 +190,27 @@ class InputWindow:
 
         if int(self.entry.cget("height")) != int(target_height):
             self.entry.configure(height=target_height)
-            # Add padding for window height (20 + 20 = 40)
-            new_window_height = int(target_height) + 40 
-            new_window_height = max(self.height, min(320, new_window_height))
-            self.root.geometry(
-                f"{self.width}x{new_window_height}+{self.root.winfo_x()}+{self.root.winfo_y()}"
-            )
+        
+        # Calculate total window height including history
+        history_height = 0
+        # Use grid_info to check if it's managed, as ismapped is unreliable during rapid updates
+        if self.history_frame.grid_info():
+            # Estimate history height (label height + padding)
+            lines = 0
+            if self.history_label.cget("text"):
+                 lines = self.history_label.cget("text").count("\n") + 1
+            if lines > 0:
+                history_height = lines * 30 + 20 # Increased line height estimate
+        
+        # Add padding for window height (20 + 20 = 40) + history
+        new_window_height = int(target_height) + 40 + history_height
+        new_window_height = max(self.height, min(600, new_window_height)) # increased max height
+        
+        print(f"DEBUG: target_entry_height={target_height}, history_height={history_height}, total={new_window_height}")
+
+        self.root.geometry(
+            f"{self.width}x{new_window_height}+{self.root.winfo_x()}+{self.root.winfo_y()}"
+        )
 
     def on_drop_files(self, event):
         # upload_callback が無ければ何もしない
@@ -250,6 +286,9 @@ class InputWindow:
             
             self.root.deiconify()
             
+            # Update history
+            self.update_history_display()
+            
             # AGGRESSIVE FOCUS LOGIC
             self.root.attributes("-topmost", True)
             self.root.lift()
@@ -317,3 +356,96 @@ class InputWindow:
 
     def start_mainloop(self):
         self.root.mainloop()
+
+    def on_paste(self, event):
+        try:
+            # Check for image in clipboard
+            img = ImageGrab.grabclipboard()
+            if img:
+                # It's an image! Save to temp file and upload
+                # Create a temp file
+                with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+                    img.save(tmp.name, "PNG")
+                    tmp_path = tmp.name
+                
+                # Mock a drop event-like behavior
+                # Using the existing file upload logic
+                # We can reuse the logic from on_drop_files if we refactor it, 
+                # or just call the worker directly. 
+                # Let's repurpose the logic by calling a helper
+                self._handle_file_upload([tmp_path])
+                return "break" # Prevent default paste
+        except Exception as e:
+            print(f"Paste error: {e}")
+            pass
+        return None # Allow default paste for text
+
+    def _handle_file_upload(self, paths):
+        if not self.upload_callback:
+            return
+
+        # Insert placeholder
+        placeholder_start = self.entry.index("end-1c")
+        display_names = [os.path.basename(p) for p in paths]
+        placeholder_text = "画像アップロード中... " + "\n"
+        self.entry.insert("end", placeholder_text)
+        self.entry.see("end")
+        self._adjust_height()
+        placeholder_end = self.entry.index("end-1c")
+
+        try:
+            self.send_button.configure(state="disabled")
+        except Exception:
+            pass
+
+        def worker():
+            urls = []
+            for path in paths:
+                try:
+                    url = self.upload_callback(path)
+                    urls.append(url)
+                    # Cleanup temp file if it was generated by us (rudimentary check: starts with temp)
+                    if path.startswith(tempfile.gettempdir()):
+                         try:
+                             os.remove(path)
+                         except:
+                             pass
+                except Exception as e:
+                    urls.append(f"[upload failed] {path} ({e})")
+
+            def insert_urls():
+                try:
+                    self.entry.delete(placeholder_start, placeholder_end)
+                except Exception:
+                    pass
+                block = "\n".join(urls) + "\n"
+                self.entry.insert("end", block)
+                self.entry.see("end")
+                self._adjust_height()
+                try:
+                    self.send_button.configure(state="normal")
+                except Exception:
+                    pass
+
+            self.root.after(0, insert_urls)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def update_history_display(self):
+        if not self.history_manager:
+            return
+
+        latest = self.history_manager.get_latest(3)
+        if not latest:
+            self.history_frame.grid_remove()
+            return
+
+        # Simple text representation for now
+        history_text = "\n".join([f"• {item}" for item in latest])
+        self.history_label.configure(text=history_text, text_color=("gray60", "gray70"))
+        
+        # Show the frame
+        self.history_frame.grid()
+        self.history_frame.configure(border_width=0)
+        
+        self._adjust_height()

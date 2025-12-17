@@ -12,7 +12,9 @@ from pynput import keyboard
 
 import config
 from sheet_manager import SheetManager
+from sheet_manager import SheetManager
 from ui import InputWindow
+from local_history import LocalHistory
 
 # Ensure we can find local modules
 
@@ -57,12 +59,14 @@ def main():
 
     # Initialize Sheet Manager
     sheet_manager = SheetManager()
+    history_manager = LocalHistory()
 
     settings = load_settings()
     hotkey_value = settings.get("hotkey") or config.HOTKEY
 
     def on_submit(text):
         print(f"Logging: {text}")
+        history_manager.add(text) # Save to local history
         if sheet_manager.append_log(text):
             print("Successfully logged to Sheet.")
         else:
@@ -72,7 +76,11 @@ def main():
         return sheet_manager.upload_file_to_drive(file_path)
 
     # Initialize UI
-    window = InputWindow(submit_callback=on_submit, upload_callback=on_upload)
+    window = InputWindow(
+        submit_callback=on_submit, 
+        upload_callback=on_upload,
+        history_manager=history_manager
+    )
 
     # ホットキーの状態管理
     hotkey_listener = None

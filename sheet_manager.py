@@ -1,4 +1,7 @@
 import os.path
+import time
+import time
+import threading
 import traceback
 from datetime import datetime
 from urllib.parse import urlparse
@@ -11,6 +14,7 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
 import config
+from offline_queue import OfflineQueue
 
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
@@ -54,6 +58,7 @@ class SheetManager:
         self.drive = None
         # We don't verify on init to allow app to start without crashing if config is incomplete
         self.is_authenticated = False
+        self.queue = OfflineQueue()
 
     def authenticate(self):
         try:
@@ -123,12 +128,17 @@ class SheetManager:
     def append_log(self, text):
         if not self.sheet:
             if not self.connect_sheet():
+                print("Connection failed. Adding to offline queue.")
+                self.queue.add(text)
                 return False
 
         now = datetime.now()
         timestamp = now.strftime("%Y-%m-%d %H:%M:%S")
         try:
             self.sheet.append_row([timestamp, text])
+            # 成功したら、溜まっているキューも処理を試みる（別スレッドが良いが、ここでは簡易的に呼ぶ）
+            # 実際にはレスポンス低下を防ぐため、スレッドで呼ぶべき
+            threading.Thread(target=self.process_queue, daemon=True).start()
             return True
         except Exception as e:
             print(f"Error appending row: {e}")
@@ -136,10 +146,42 @@ class SheetManager:
             if self.connect_sheet():
                 try:
                     self.sheet.append_row([timestamp, text])
+                    threading.Thread(target=self.process_queue, daemon=True).start()
                     return True
                 except:
-                    return False
+                    pass
+            
+            # If all else fails, add to queue
+            print("Failed to send. Adding to offline queue.")
+            self.queue.add(text, timestamp)
             return False
+
+    def process_queue(self):
+        """queued items の再送を試みる"""
+        if self.queue.is_empty():
+            return
+
+        if not self.sheet:
+             if not self.connect_sheet():
+                 return
+
+        # キューの先頭から順に処理
+        print(f"Processing offline queue ({len(self.queue.get_all())} items)...")
+        while not self.queue.is_empty():
+            item = self.queue.peek()
+            if not item:
+                break
+            
+            try:
+                # タイムスタンプは元のものを使用
+                self.sheet.append_row([item["timestamp"], item["text"]])
+                print(f"Recovered item sent: {item['text'][:10]}...")
+                self.queue.pop() # 成功したら消す
+                time.sleep(1) # API制限考慮
+            except Exception as e:
+                print(f"Retry failed: {e}")
+                # 接続切れなどの場合はループを抜けて次回に持ち越し
+                break
 
     def upload_file_to_drive(self, file_path: str) -> str:
         """
