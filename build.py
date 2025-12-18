@@ -17,6 +17,9 @@ def create_default_settings():
         "credentials_file": "credentials.json",
         "drive_folder_id": "YOUR_DRIVE_FOLDER_ID_HERE",
         "hotkey": "ctrl+shift+space",
+        "sheet_name": "",
+        "sheet_next_hotkey": "ctrl+shift+]",
+        "sheet_prev_hotkey": "ctrl+shift+[",
     }
 
     settings_template_path = "settings_template.json"
@@ -48,6 +51,8 @@ def build():
         "--noconsole",
         "--onefile",
         f"--icon={ICON_FILE}",
+        "--hidden-import=pystray",
+        "--hidden-import=pystray._win32",
         "--clean",
     ]
 
@@ -83,7 +88,18 @@ def build():
             f.write(
                 "   - hotkey: ショートカットキー (デフォルト: ctrl+shift+space)\n\n"
             )
-            f.write("3. 初回起動時の手順:\n")
+            f.write("   - sheet_name: 既定で使用するシート名（空なら先頭シート）\n")
+            f.write(
+                "   - sheet_next_hotkey: 次のシートへ切り替えるショートカット（空で無効）\n"
+            )
+            f.write(
+                "   - sheet_prev_hotkey: 前のシートへ切り替えるショートカット（空で無効）\n\n"
+            )
+            f.write("3. 使い方（概要）:\n")
+            f.write("   - hotkey で入力UIを表示/非表示\n")
+            f.write("   - sheet_next_hotkey / sheet_prev_hotkey でシート切り替え\n")
+            f.write("   - トレイメニューからシート変更/切り替えも可能\n\n")
+            f.write("4. 初回起動時の手順:\n")
             f.write("   - credentials.jsonを同じディレクトリに配置してください\n")
             f.write("   - settings.jsonで設定値を変更してください\n")
             f.write("   - Supanikki.exeを実行してください\n\n")

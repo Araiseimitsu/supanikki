@@ -54,7 +54,9 @@ class SheetManager:
     def __init__(self):
         self.creds = None
         self.client = None
+        self.spreadsheet = None
         self.sheet = None
+        self.sheet_title = getattr(config, "SHEET_NAME", "")
         self.drive = None
         # We don't verify on init to allow app to start without crashing if config is incomplete
         self.is_authenticated = False
@@ -118,11 +120,48 @@ class SheetManager:
             return False
 
         try:
-            self.sheet = self.client.open_by_key(config.SPREADSHEET_ID).sheet1
+            self.spreadsheet = self.client.open_by_key(config.SPREADSHEET_ID)
+            if self.sheet_title:
+                try:
+                    self.sheet = self.spreadsheet.worksheet(self.sheet_title)
+                except Exception:
+                    print(f"Sheet '{self.sheet_title}' not found. Falling back to first sheet.")
+                    self.sheet = self.spreadsheet.sheet1
+                    self.sheet_title = self.sheet.title
+            else:
+                self.sheet = self.spreadsheet.sheet1
+                self.sheet_title = self.sheet.title
             return True
         except Exception as e:
             print(f"Error connecting to sheet: {e}")
             print(traceback.format_exc())
+            return False
+
+    def get_sheet_titles(self):
+        if not self.spreadsheet:
+            if not self.connect_sheet():
+                return []
+
+        try:
+            return [ws.title for ws in self.spreadsheet.worksheets()]
+        except Exception as e:
+            print(f"Failed to list sheets: {e}")
+            return []
+
+    def set_sheet_by_title(self, title: str) -> bool:
+        if not title:
+            return False
+
+        if not self.spreadsheet:
+            if not self.connect_sheet():
+                return False
+
+        try:
+            self.sheet = self.spreadsheet.worksheet(title)
+            self.sheet_title = title
+            return True
+        except Exception as e:
+            print(f"Failed to select sheet '{title}': {e}")
             return False
 
     def append_log(self, text):

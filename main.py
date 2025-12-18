@@ -12,7 +12,6 @@ from pynput import keyboard
 
 import config
 from sheet_manager import SheetManager
-from sheet_manager import SheetManager
 from ui import InputWindow
 from local_history import LocalHistory
 
@@ -63,6 +62,15 @@ def main():
 
     settings = load_settings()
     hotkey_value = settings.get("hotkey") or config.HOTKEY
+    if "sheet_next_hotkey" in settings:
+        sheet_next_hotkey = (settings.get("sheet_next_hotkey") or "").strip()
+    else:
+        sheet_next_hotkey = config.SHEET_NEXT_HOTKEY
+
+    if "sheet_prev_hotkey" in settings:
+        sheet_prev_hotkey = (settings.get("sheet_prev_hotkey") or "").strip()
+    else:
+        sheet_prev_hotkey = config.SHEET_PREV_HOTKEY
 
     def on_submit(text):
         print(f"Logging: {text}")
@@ -75,11 +83,50 @@ def main():
     def on_upload(file_path: str) -> str:
         return sheet_manager.upload_file_to_drive(file_path)
 
+    window = None
+
+    def get_current_sheet_name() -> str:
+        return sheet_manager.sheet_title or settings.get("sheet_name", "")
+
+    def set_active_sheet(title: str) -> bool:
+        if sheet_manager.set_sheet_by_title(title):
+            settings["sheet_name"] = title
+            save_settings(settings)
+            print(f"Active sheet set to: {title}")
+            if window:
+                window.update_sheet_name(title)
+            return True
+        print(f"Failed to select sheet: {title}")
+        return False
+
+    def cycle_sheet(direction: int):
+        titles = sheet_manager.get_sheet_titles()
+        if not titles:
+            print("No sheets available or failed to connect.")
+            return
+
+        current = sheet_manager.sheet_title
+        if not current and sheet_manager.sheet:
+            try:
+                current = sheet_manager.sheet.title
+            except Exception:
+                current = None
+
+        if current in titles:
+            idx = titles.index(current)
+        else:
+            idx = 0
+
+        new_title = titles[(idx + direction) % len(titles)]
+        set_active_sheet(new_title)
+        schedule_hotkey_reset()
+
     # Initialize UI
     window = InputWindow(
         submit_callback=on_submit, 
         upload_callback=on_upload,
-        history_manager=history_manager
+        history_manager=history_manager,
+        sheet_name_provider=get_current_sheet_name,
     )
 
     # ホットキーの状態管理
@@ -87,6 +134,23 @@ def main():
     hotkey_lock = threading.Lock()
     last_trigger_time = [0]  # リスト参照で共有
     debounce_interval = 0.3  # 300ms以内の連続呼び出しを防ぐ
+    last_hotkey_reset = [0]
+    hotkey_reset_lock = threading.Lock()
+    hotkey_reset_interval = 0.5  # 連続リセット抑制
+
+    def schedule_hotkey_reset():
+        """押下状態のスタック対策としてホットキーを再登録する"""
+        now = time.time()
+        if now - last_hotkey_reset[0] < hotkey_reset_interval:
+            return
+        last_hotkey_reset[0] = now
+
+        def worker():
+            time.sleep(0.05)
+            with hotkey_reset_lock:
+                register_hotkey()
+
+        threading.Thread(target=worker, daemon=True).start()
 
     def toggle_window():
         """ホットキー押下時のコールバック（デバウンス処理付き）"""
@@ -99,6 +163,8 @@ def main():
             window.thread_safe_toggle()
         except Exception as e:
             print(f"Hotkey callback error: {e}")
+        finally:
+            schedule_hotkey_reset()
 
     def convert_hotkey_to_pynput(hotkey_str: str):
         """
@@ -145,18 +211,58 @@ def main():
                         pass
                     hotkey_listener = None
 
-                # ホットキーをpynput形式に変換
+                hotkey_map = {}
+                registered_hotkeys = set()
+
+                # Toggle window hotkey
                 pynput_hotkey = convert_hotkey_to_pynput(hotkey_value)
-                if not pynput_hotkey:
+                if pynput_hotkey:
+                    hotkey_map[pynput_hotkey] = toggle_window
+                    registered_hotkeys.add(pynput_hotkey)
+                else:
                     print(f"Invalid hotkey format: {hotkey_value}")
+
+                # Sheet switching hotkeys
+                if sheet_next_hotkey:
+                    pynput_next = convert_hotkey_to_pynput(sheet_next_hotkey)
+                    if pynput_next:
+                        if pynput_next in registered_hotkeys:
+                            print("sheet_next_hotkey conflicts with existing hotkey; skipping.")
+                        else:
+                            hotkey_map[pynput_next] = lambda: cycle_sheet(1)
+                            registered_hotkeys.add(pynput_next)
+                    else:
+                        print(f"Invalid sheet_next_hotkey: {sheet_next_hotkey}")
+
+                if sheet_prev_hotkey:
+                    pynput_prev = convert_hotkey_to_pynput(sheet_prev_hotkey)
+                    if pynput_prev:
+                        if pynput_prev in registered_hotkeys:
+                            print("sheet_prev_hotkey conflicts with existing hotkey; skipping.")
+                        else:
+                            hotkey_map[pynput_prev] = lambda: cycle_sheet(-1)
+                            registered_hotkeys.add(pynput_prev)
+                    else:
+                        print(f"Invalid sheet_prev_hotkey: {sheet_prev_hotkey}")
+
+                if not hotkey_map:
+                    print("No valid hotkeys to register.")
                     return
 
                 # GlobalHotKeysを使用して登録
-                hotkey_listener = keyboard.GlobalHotKeys({pynput_hotkey: toggle_window})
-                hotkey_listener.start()
-                print(
-                    f"Hotkey '{hotkey_value}' (pynput: '{pynput_hotkey}') registered successfully."
-                )
+                try:
+                    hotkey_listener = keyboard.GlobalHotKeys(hotkey_map)
+                    hotkey_listener.start()
+                    print("Hotkeys registered successfully.")
+                except Exception as e:
+                    print(f"Failed to register hotkeys: {e}")
+                    if pynput_hotkey:
+                        try:
+                            hotkey_listener = keyboard.GlobalHotKeys({pynput_hotkey: toggle_window})
+                            hotkey_listener.start()
+                            print("Hotkey registered successfully (toggle only).")
+                        except Exception as e2:
+                            print(f"Failed to register toggle hotkey only: {e2}")
             except Exception as e:
                 print(f"Failed to register hotkey: {e}")
                 import traceback
@@ -196,8 +302,56 @@ def main():
         toggle_window()
 
     def on_open_sheet(icon, item):
-        url = f"https://docs.google.com/spreadsheets/d/{config.SPREADSHEET_ID}"
+        base_url = f"https://docs.google.com/spreadsheets/d/{config.SPREADSHEET_ID}"
+        url = base_url
+        try:
+            if not sheet_manager.sheet:
+                sheet_manager.connect_sheet()
+            if sheet_manager.sheet:
+                gid = getattr(sheet_manager.sheet, "id", None)
+                if gid is not None:
+                    url = f"{base_url}/edit#gid={gid}"
+        except Exception:
+            pass
         webbrowser.open(url)
+
+    def on_next_sheet(icon, item):
+        cycle_sheet(1)
+
+    def on_prev_sheet(icon, item):
+        cycle_sheet(-1)
+
+    def on_change_sheet(icon, item):
+        def prompt():
+            try:
+                import tkinter.messagebox as mb
+                import customtkinter as ctk
+
+                titles = sheet_manager.get_sheet_titles()
+                if not titles:
+                    mb.showerror("エラー", "シート一覧の取得に失敗しました。")
+                    return
+
+                current = sheet_manager.sheet_title or ""
+                hint = " / ".join(titles)
+                dialog = ctk.CTkInputDialog(
+                    text=f"切り替えるシート名を入力してください:\n{hint}\n\n現在: {current}",
+                    title="シート変更",
+                )
+                new_title = (dialog.get_input() or "").strip()
+                if not new_title:
+                    return
+                if new_title not in titles:
+                    mb.showerror("エラー", f"シートが見つかりません: {new_title}")
+                    return
+                set_active_sheet(new_title)
+            except Exception as e:
+                print(f"Sheet change dialog error: {e}")
+
+        try:
+            window.root.after(0, prompt)
+        except Exception:
+            prompt()
 
     def on_open_upload_folder(icon, item):
         # Driveのアップロード先フォルダ（config.DRIVE_FOLDER_ID）を開く
@@ -287,6 +441,9 @@ def main():
     menu = pystray.Menu(
         pystray.MenuItem("Input", on_toggle_tray),
         pystray.MenuItem("Open Spreadsheet", on_open_sheet),
+        pystray.MenuItem("Next Sheet", on_next_sheet),
+        pystray.MenuItem("Previous Sheet", on_prev_sheet),
+        pystray.MenuItem("Change Sheet", on_change_sheet),
         pystray.MenuItem("Open Upload Folder", on_open_upload_folder),
         pystray.MenuItem("Change Hotkey", on_change_hotkey),
         pystray.MenuItem("Restart", on_restart),

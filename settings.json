@@ -2,5 +2,8 @@
   "spreadsheet_id": "YOUR_SPREADSHEET_ID_HERE",
   "credentials_file": "credentials.json",
   "drive_folder_id": "YOUR_DRIVE_FOLDER_ID_HERE",
-  "hotkey": "ctrl+shift+space"
+  "hotkey": "ctrl+shift+space",
+  "sheet_name": "",
+  "sheet_next_hotkey": "ctrl+shift+]",
+  "sheet_prev_hotkey": "ctrl+shift+["
 }

@@ -55,4 +55,14 @@ SPREADSHEET_ID = _settings["spreadsheet_id"]
 CREDENTIALS_FILE = os.path.join(BASE_DIR, _settings["credentials_file"])
 TOKEN_FILE = os.path.join(BASE_DIR, "token.json")
 HOTKEY = _settings["hotkey"]
+
+DEFAULT_SHEET_NEXT_HOTKEY = "ctrl+shift+]"
+DEFAULT_SHEET_PREV_HOTKEY = "ctrl+shift+["
+
+SHEET_NAME = (_settings.get("sheet_name") or "").strip()
+_raw_next_hotkey = _settings.get("sheet_next_hotkey", DEFAULT_SHEET_NEXT_HOTKEY)
+_raw_prev_hotkey = _settings.get("sheet_prev_hotkey", DEFAULT_SHEET_PREV_HOTKEY)
+SHEET_NEXT_HOTKEY = (str(_raw_next_hotkey).strip() if _raw_next_hotkey is not None else "")
+SHEET_PREV_HOTKEY = (str(_raw_prev_hotkey).strip() if _raw_prev_hotkey is not None else "")
+
 DRIVE_FOLDER_ID = _settings["drive_folder_id"]

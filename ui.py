@@ -8,10 +8,11 @@ from tkinterdnd2 import DND_FILES, TkinterDnD
 
 
 class InputWindow:
-    def __init__(self, submit_callback, upload_callback=None, history_manager=None):
+    def __init__(self, submit_callback, upload_callback=None, history_manager=None, sheet_name_provider=None):
         self.submit_callback = submit_callback
         self.upload_callback = upload_callback
         self.history_manager = history_manager
+        self.sheet_name_provider = sheet_name_provider
 
         ctk.set_appearance_mode("System")
         ctk.set_default_color_theme("blue")
@@ -55,8 +56,8 @@ class InputWindow:
             self.root,
             corner_radius=40,  # Slightly more rounded for larger height
             fg_color=("white", "#1c1c1e"),  # Apple-like dark mode gray
-            border_width=1,
-            border_color=("#e5e5e5", "#333333"),  # Subtle border
+            border_width=2,
+            border_color="#d3d3d3",
         )
         self.container.grid(row=0, column=0, sticky="nsew", padx=0, pady=0)
         self.container.grid_columnconfigure(0, weight=1)
@@ -89,23 +90,42 @@ class InputWindow:
             fg_color="transparent",
             text_color=("black", "white"),
             wrap="word",
-            activate_scrollbars=False
+            activate_scrollbars=False,
         )
         self.entry.grid(row=0, column=0, padx=(25, 10), pady=(20, 20), sticky="nsew")
 
+        # Right Side (Sheet label + Send Button)
+        self.right_frame = ctk.CTkFrame(self.container, fg_color="transparent")
+        self.right_frame.grid(row=0, column=1, sticky="nsew", padx=(0, 20), pady=(10, 20))
+        self.right_frame.grid_rowconfigure(0, weight=0)
+        self.right_frame.grid_rowconfigure(1, weight=0)
+
+        # Current sheet label (small)
+        self.sheet_label = ctk.CTkLabel(
+            self.right_frame,
+            text="",
+            font=("Yu Gothic UI", 10),
+            text_color=("gray40", "gray60"),
+            anchor="e",
+        )
+        self.sheet_label.grid(row=0, column=0, sticky="e", pady=(0, 6))
+
         # Send Button (Round Icon)
         self.send_button = ctk.CTkButton(
-            self.container,
-            text="↑",
-            font=("Arial", 24, "bold"),
-            width=48,
-            height=48,
-            corner_radius=24,
-            fg_color=("#007AFF", "#0A84FF"),  # iOS Blue
-            hover_color=("#0062CC", "#0070D9"),
+            self.right_frame,
+            text="→",
+            font=("Yu Gothic UI Semibold", 20),
+            width=50,
+            height=50,
+            corner_radius=25,
+            fg_color=("#F2F2F2", "#2B2B2B"),
+            hover_color=("#E8E8E8", "#3A3A3A"),
+            border_width=1,
+            border_color=("#D3D3D3", "#444444"),
+            text_color=("gray20", "gray85"),
             command=self.on_send_click,
         )
-        self.send_button.grid(row=0, column=1, padx=(0, 20), pady=(0, 20), sticky="s")
+        self.send_button.grid(row=1, column=0, sticky="e")
 
         # Drag & Drop（ファイル）
         # CTkTextbox は内部に tk.Text を持つので、そちらにDnDを登録する
@@ -266,6 +286,15 @@ class InputWindow:
         threading.Thread(target=worker, daemon=True).start()
         return "break"
 
+    def update_sheet_name(self, name: str):
+        if not hasattr(self, "sheet_label"):
+            return
+        label = f"シート: {name}" if name else ""
+        try:
+            self.sheet_label.configure(text=label)
+        except Exception:
+            pass
+
     def show(self):
         if not self.is_visible:
             # Clear previous content to prevent flash
@@ -286,6 +315,13 @@ class InputWindow:
             
             self.root.deiconify()
             
+            # Update sheet label
+            if self.sheet_name_provider:
+                try:
+                    self.update_sheet_name(self.sheet_name_provider() or "")
+                except Exception:
+                    pass
+
             # Update history
             self.update_history_display()
             
