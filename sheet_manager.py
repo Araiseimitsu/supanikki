@@ -1,4 +1,4 @@
-import os.path
+import os
 import time
 import time
 import threading
@@ -7,6 +7,7 @@ from datetime import datetime
 from urllib.parse import urlparse
 
 import gspread
+from google.auth.exceptions import RefreshError
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -82,7 +83,18 @@ class SheetManager:
 
             if not self.creds or not self.creds.valid:
                 if self.creds and self.creds.expired and self.creds.refresh_token:
-                    self.creds.refresh(Request())
+                    try:
+                        self.creds.refresh(Request())
+                    except RefreshError:
+                        print(
+                            "Refresh token is no longer valid. "
+                            "Re-authentication is required."
+                        )
+                        self.creds = None
+                        try:
+                            os.remove(config.TOKEN_FILE)
+                        except Exception:
+                            pass
                 else:
                     if not os.path.exists(config.CREDENTIALS_FILE):
                         print(

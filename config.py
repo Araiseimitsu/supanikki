@@ -4,8 +4,11 @@ import sys
 
 # Determine if we are running in a frozen bundle (PyInstaller) or standard script
 if getattr(sys, "frozen", False):
-    # If frozen, the executable dir is here
-    BASE_DIR = os.path.dirname(sys.executable)
+    # When PyInstaller builds a one-file bundle the runtime executable is unpacked into a temp directory,
+    # so sys.executable points inside that temporary folder. The original executable path used by the user
+    # is available via sys.argv[0], so prefer its directory when loading external config files.
+    exe_path = os.path.abspath(sys.argv[0]) if sys.argv else sys.executable
+    BASE_DIR = os.path.dirname(exe_path)
 else:
     # If script, the script dir is here
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
