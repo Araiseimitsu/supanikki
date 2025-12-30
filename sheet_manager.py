@@ -68,7 +68,17 @@ class SheetManager:
             if os.path.exists(config.TOKEN_FILE):
                 # まずは token.json に入っているスコープのまま読み込む（ここでSCOPESを渡すと、
                 # refresh時に「持っていないスコープ」で更新を試みて invalid_scope になり得る）
-                self.creds = Credentials.from_authorized_user_file(config.TOKEN_FILE)
+                try:
+                    if os.path.getsize(config.TOKEN_FILE) == 0:
+                        raise ValueError("token.json is empty")
+                    self.creds = Credentials.from_authorized_user_file(config.TOKEN_FILE)
+                except Exception:
+                    # 空/壊れた token.json は削除して再認証へ
+                    self.creds = None
+                    try:
+                        os.remove(config.TOKEN_FILE)
+                    except Exception:
+                        pass
 
             # スコープが不足している場合（Drive追加など）は再認証が必要
             if (
@@ -80,6 +90,15 @@ class SheetManager:
                     "Existing token.json does not have required scopes. Re-authentication is required."
                 )
                 self.creds = None
+
+            # 期限切れなら token.json を削除して再認証へ
+            if self.creds and getattr(self.creds, "expired", False):
+                print("Token expired. Removing token.json and re-authenticating.")
+                self.creds = None
+                try:
+                    os.remove(config.TOKEN_FILE)
+                except Exception:
+                    pass
 
             if not self.creds or not self.creds.valid:
                 if self.creds and self.creds.expired and self.creds.refresh_token:
@@ -95,7 +114,9 @@ class SheetManager:
                             os.remove(config.TOKEN_FILE)
                         except Exception:
                             pass
-                else:
+
+                # Refreshに失敗した場合や初回は再認証へ
+                if not self.creds or not self.creds.valid:
                     if not os.path.exists(config.CREDENTIALS_FILE):
                         print(
                             f"Credentials file '{config.CREDENTIALS_FILE}' not found."
@@ -105,7 +126,7 @@ class SheetManager:
                     flow = InstalledAppFlow.from_client_secrets_file(
                         config.CREDENTIALS_FILE, SCOPES
                     )
-                    self.creds = flow.run_local_server(port=0)
+                    self.creds = flow.run_local_server(port=0, open_browser=True)
 
                 with open(config.TOKEN_FILE, "w") as token:
                     token.write(self.creds.to_json())
