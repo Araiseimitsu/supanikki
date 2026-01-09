@@ -104,6 +104,9 @@ class SheetManager:
                 if self.creds and self.creds.expired and self.creds.refresh_token:
                     try:
                         self.creds.refresh(Request())
+                        with open(config.TOKEN_FILE, "w") as token:
+                            token.write(self.creds.to_json())
+                        print("Token refreshed and saved.")
                     except RefreshError:
                         print(
                             "Refresh token is no longer valid. "
